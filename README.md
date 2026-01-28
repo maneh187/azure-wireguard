@@ -88,11 +88,29 @@ az login
 
 ## 🛠️ Prerequisites
 
-**Required:**
-- Azure CLI (`brew install azure-cli` or see [docs](https://docs.microsoft.com/cli/azure/install-azure-cli))
-- jq (`brew install jq`)
-- curl (usually pre-installed)
+**Required Tools:**
+
+1. **Azure CLI** - Install for your platform:
+   - **macOS:** `brew install azure-cli`
+   - **Linux (Debian/Ubuntu):** `curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash`
+   - **Linux (RPM-based):** `curl -sL https://aka.ms/InstallAzureCLIRPM | sudo bash`
+   - **Windows:** Download from [Azure CLI installer](https://aka.ms/installazurecliwindows) or use `winget install -e --id Microsoft.AzureCLI`
+   - **Verify:** `az --version`
+
+2. **jq** - JSON processor:
+   - **macOS:** `brew install jq`
+   - **Linux (Debian/Ubuntu):** `sudo apt-get install jq`
+   - **Linux (RPM-based):** `sudo yum install jq` or `sudo dnf install jq`
+   - **Windows:** Download from [jq releases](https://stedolan.github.io/jq/download/) or use `winget install jqlang.jq`
+   - **Verify:** `jq --version`
+
+3. **curl** - Usually pre-installed on all platforms
+   - **Windows:** Included in Windows 10/11 by default
+   - **Verify:** `curl --version`
+
+**Additional Requirements:**
 - Active Azure subscription with appropriate permissions
+- Bash shell (Linux/macOS native, Windows: WSL, Git Bash, or PowerShell alternative)
 
 **Network Requirements:**
 - HTTPS (port 443) access for Azure CLI

@@ -40,33 +40,72 @@ That's it! Your VPN is ready to use.
 ### Required Tools
 
 1. **Azure CLI** - For managing Azure resources
+
+   **macOS:**
    ```bash
-   # macOS
    brew install azure-cli
+   ```
 
-   # Linux
+   **Linux (Debian/Ubuntu):**
+   ```bash
    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+   ```
 
-   # Verify installation
+   **Linux (RPM-based - RHEL/CentOS/Fedora):**
+   ```bash
+   curl -sL https://aka.ms/InstallAzureCLIRPM | sudo bash
+   ```
+
+   **Windows:**
+   - Download: [Azure CLI installer](https://aka.ms/installazurecliwindows)
+   - Or using winget: `winget install -e --id Microsoft.AzureCLI`
+   - Or using PowerShell: `Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile .\AzureCLI.msi; Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'`
+
+   **Verify installation:**
+   ```bash
    az --version
    ```
 
 2. **jq** - For JSON processing
+
+   **macOS:**
    ```bash
-   # macOS
    brew install jq
+   ```
 
-   # Linux (Debian/Ubuntu)
+   **Linux (Debian/Ubuntu):**
+   ```bash
    sudo apt-get install jq
+   ```
 
-   # Verify installation
+   **Linux (RPM-based - RHEL/CentOS/Fedora):**
+   ```bash
+   sudo yum install jq
+   # or
+   sudo dnf install jq
+   ```
+
+   **Windows:**
+   - Download: [jq releases](https://stedolan.github.io/jq/download/)
+   - Or using winget: `winget install jqlang.jq`
+   - Or using Chocolatey: `choco install jq`
+   - Place `jq.exe` in your PATH
+
+   **Verify installation:**
+   ```bash
    jq --version
    ```
 
 3. **curl** - Usually pre-installed
+
+   **macOS/Linux:**
    ```bash
    curl --version
    ```
+
+   **Windows:**
+   - Included in Windows 10/11 by default
+   - Verify: `curl --version` in PowerShell or Command Prompt
 
 ### Azure Requirements
 
@@ -83,6 +122,7 @@ That's it! Your VPN is ready to use.
 
 ### First Time Setup
 
+**macOS/Linux:**
 ```bash
 # Login to Azure
 az login
@@ -94,9 +134,37 @@ az account show
 az account list --output table
 ```
 
+**Windows (PowerShell/Command Prompt/Git Bash):**
+```powershell
+# Login to Azure
+az login
+
+# Verify you're logged in
+az account show
+
+# List available subscriptions (if you have multiple)
+az account list --output table
+```
+
+**Windows (WSL - Windows Subsystem for Linux):**
+- Use the same Linux commands as above
+- WSL provides a full Linux environment on Windows
+
 ---
 
 ## Deployment
+
+### Shell Requirements
+
+**macOS/Linux:**
+- Use Terminal or your preferred shell (bash/zsh)
+
+**Windows:**
+- **Option 1 (Recommended):** Use WSL (Windows Subsystem for Linux)
+  - Install: `wsl --install` in PowerShell as Administrator
+  - Provides full Linux compatibility
+- **Option 2:** Use Git Bash (included with Git for Windows)
+- **Option 3:** Use PowerShell with bash compatibility (may require script adaptations)
 
 ### Basic Deployment
 
@@ -143,6 +211,13 @@ This will:
   -r "my-vpn-rg" \
   --ssh-key "/path/to/your/key.pub"
 ```
+
+**Note on SSH Keys:**
+- **macOS/Linux:** Keys usually in `~/.ssh/id_rsa.pub`
+- **Windows:** Keys in `%USERPROFILE%\.ssh\id_rsa.pub` or `C:\Users\YourName\.ssh\id_rsa.pub`
+- Generate if needed:
+  - All platforms: `ssh-keygen -t rsa -b 4096`
+  - Or use Azure's generated key by omitting the `--ssh-key` parameter
 
 ### Command-Line Options
 
@@ -203,22 +278,88 @@ Key Vault:           wg-vault-a1b2c3d4
 
 After creating peers in the Web UI, you can download the `.conf` file or scan the QR code directly from the browser.
 
-### Desktop Setup (Windows/Mac/Linux)
+### Desktop Setup (Windows/macOS/Linux)
 
 1. **Install WireGuard:**
-   - Windows: https://www.wireguard.com/install/
-   - macOS: `brew install wireguard-tools` or download from website
-   - Linux: `sudo apt-get install wireguard` (Debian/Ubuntu)
+
+   **Windows:**
+   - Download installer from [WireGuard for Windows](https://www.wireguard.com/install/)
+   - Or use winget: `winget install WireGuard.WireGuard`
+   - Or use Chocolatey: `choco install wireguard`
+
+   **macOS:**
+   - Using Homebrew: `brew install wireguard-tools`
+   - Or download from [Mac App Store](https://apps.apple.com/us/app/wireguard/id1451685025)
+   - Or download from [WireGuard website](https://www.wireguard.com/install/)
+
+   **Linux (Debian/Ubuntu):**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install wireguard
+   ```
+
+   **Linux (RPM-based - RHEL/CentOS/Fedora):**
+   ```bash
+   sudo yum install wireguard-tools
+   # or
+   sudo dnf install wireguard-tools
+   ```
+
+   **Linux (Arch):**
+   ```bash
+   sudo pacman -S wireguard-tools
+   ```
 
 2. **Import Configuration:**
-   - Open WireGuard app
+
+   **Windows:**
+   - Open WireGuard application
+   - Click "Add Tunnel" → "Import tunnel(s) from file"
+   - Select your `.conf` file
+   - Click "Activate" button
+
+   **macOS:**
+   - Open WireGuard application
    - Click "Add Tunnel" or "Import from file"
    - Select your `.conf` file
-   - Click "Activate"
+   - Click "Activate" or toggle the switch
+
+   **Linux (GUI):**
+   - Open WireGuard GUI (if installed)
+   - Import the `.conf` file
+   - Activate the connection
+
+   **Linux (Command Line):**
+   ```bash
+   # Copy config to WireGuard directory
+   sudo cp your-config.conf /etc/wireguard/wg0.conf
+
+   # Start the VPN
+   sudo wg-quick up wg0
+
+   # Enable at boot (optional)
+   sudo systemctl enable wg-quick@wg0
+
+   # Check status
+   sudo wg show
+   ```
 
 3. **Verify Connection:**
-   - Check your IP: https://ifconfig.me
+
+   **All Platforms:**
+   - Visit: https://ifconfig.me or https://whatismyip.com
    - Should show your Azure VM's public IP
+   - Or use command line:
+
+   **Windows (PowerShell):**
+   ```powershell
+   (Invoke-WebRequest -Uri "https://ifconfig.me").Content
+   ```
+
+   **macOS/Linux:**
+   ```bash
+   curl ifconfig.me
+   ```
 
 ### Mobile Setup (iOS/Android)
 
@@ -311,9 +452,19 @@ az vm run-command invoke \
 
 If SSH is available on your network:
 
+**macOS/Linux:**
 ```bash
 ssh azureuser@<PUBLIC_IP>
 ```
+
+**Windows:**
+- **PowerShell/Command Prompt:** `ssh azureuser@<PUBLIC_IP>` (Windows 10/11 includes OpenSSH)
+- **PuTTY:** Use PuTTY client (download from [putty.org](https://www.putty.org/))
+  - Host: `<PUBLIC_IP>`
+  - Port: `22`
+  - Connection type: SSH
+  - Load your private key in Connection → SSH → Auth
+- **WSL:** `ssh azureuser@<PUBLIC_IP>` (same as Linux)
 
 **Note:** SSH is not required for deployment or management. All operations can be performed via Azure CLI from any network.
 
@@ -471,6 +622,18 @@ az vm run-command invoke \
 ```
 
 **Check 4: Test port**
+
+**macOS/Linux:**
+```bash
+curl -I http://<PUBLIC_IP>:51821
+```
+
+**Windows (PowerShell):**
+```powershell
+Invoke-WebRequest -Uri "http://<PUBLIC_IP>:51821" -Method Head
+```
+
+**Windows (Command Prompt with curl):**
 ```bash
 curl -I http://<PUBLIC_IP>:51821
 ```

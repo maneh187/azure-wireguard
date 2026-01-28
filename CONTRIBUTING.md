@@ -116,9 +116,12 @@ All submissions require review before merging:
 
 ### Prerequisites
 
-- Azure CLI installed and configured
-- WireGuard tools installed
-- Bash shell (Linux/macOS) or WSL (Windows)
+- **Azure CLI** installed and configured (see README.md for installation instructions)
+- **WireGuard tools** installed (optional, for local testing)
+- **Bash shell:**
+  - Linux/macOS: Native bash/zsh terminal
+  - Windows: WSL (Windows Subsystem for Linux), Git Bash, or compatible shell
+- **jq** installed (for JSON processing)
 - Azure subscription with appropriate permissions
 
 ### Testing Locally
@@ -141,12 +144,22 @@ cd tools
 
 ### Cleanup After Testing
 
+**macOS/Linux/WSL:**
 ```bash
 # Delete test Azure resources
 az group delete --name your-test-resource-group --yes
 
 # Remove generated configs (not committed due to .gitignore)
 rm -rf tools/wireguard-configs-*/
+```
+
+**Windows (PowerShell):**
+```powershell
+# Delete test Azure resources
+az group delete --name your-test-resource-group --yes
+
+# Remove generated configs (not committed due to .gitignore)
+Remove-Item -Recurse -Force tools/wireguard-configs-*
 ```
 
 ## Community Guidelines
