@@ -1,6 +1,5 @@
 # WireGuard VPN - Azure Deployment Tool
 
-**Tool Location:** `apps/wireguard-azure/`
 **Tool Type:** Reusable, production-ready (maintained, never archived)
 **Purpose:** Automated WireGuard VPN server deployment on Azure
 
