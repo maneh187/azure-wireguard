@@ -1,0 +1,26 @@
+# OS & System
+.DS_Store
+.Trashes
+.directory
+
+# Editors & Tools
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets & Credentials
+*.conf
+*.pem
+*.key
+*.ovpn
+id_rsa
+id_rsa.pub
+
+# Project Specific
+wireguard-configs-*/
+.azure/
+terraform.tfstate*
+
+# Local Tools (not part of the repo)
+.antigravity/
