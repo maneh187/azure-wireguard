@@ -135,8 +135,7 @@ cd wireguard-azure
 # ... edit files ...
 
 # Test deployment script
-cd tools
-./deploy-wireguard-azure.sh
+./deploy-wireguard-azure-vm.sh
 
 # Verify configuration generation
 # Check output in wireguard-configs-* directory
@@ -150,7 +149,7 @@ cd tools
 az group delete --name your-test-resource-group --yes
 
 # Remove generated configs (not committed due to .gitignore)
-rm -rf tools/wireguard-configs-*/
+rm -rf ./wireguard-configs-*/
 ```
 
 **Windows (PowerShell):**
@@ -159,7 +158,7 @@ rm -rf tools/wireguard-configs-*/
 az group delete --name your-test-resource-group --yes
 
 # Remove generated configs (not committed due to .gitignore)
-Remove-Item -Recurse -Force tools/wireguard-configs-*
+Remove-Item -Recurse -Force ./wireguard-configs-*
 ```
 
 ## Community Guidelines

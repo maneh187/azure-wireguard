@@ -13,7 +13,7 @@
 #   - curl and jq for API interactions
 ################################################################################
 
-set -e  # Exit on any error
+set -euo pipefail  # Exit on error, unset variable, or failed pipe
 
 # Color codes for output
 RED='\033[0;31m'
@@ -33,10 +33,15 @@ ADMIN_USERNAME="azureuser"
 WG_PORT=51820
 WG_UI_PORT=51821
 DNS_SERVER="168.63.129.16"  # Azure DNS for Private DNS resolution
-NUM_PEERS=0  # Peers must be created manually via Web UI (API auth not reliable)
+WG_PASSWORD=""  # Set via -p/--password or prompted interactively
+SSH_KEY_PATH=""  # Set via --ssh-key; defaults to ~/.ssh/id_rsa.pub
+WEB_UI_SOURCE=""  # Restrict Web UI (TCP 51821) to this CIDR; auto-detects deployer IP if empty
+
+# Container image (pinned — wg-easy v14 uses the PASSWORD_HASH env contract)
+WG_EASY_IMAGE="ghcr.io/wg-easy/wg-easy:14"
 
 # Azure Key Vault configuration (opt-in)
-KEY_VAULT_NAME="wg-vault-$(openssl rand -hex 4)"  # Unique name
+KEY_VAULT_NAME=""  # Computed on demand in create_key_vault (only when --use-key-vault)
 USE_KEY_VAULT=false  # Disabled by default (use --use-key-vault to enable)
 
 # Private DNS configuration
@@ -128,14 +133,17 @@ Usage: $0 [OPTIONS]
 
 Deploy WireGuard VPN using wg-easy on Azure VM with Docker
 
-Required Options:
-    -p, --password PASSWORD                   Password for wg-easy web UI (min 8 chars)
+Options:
+    -p, --password PASSWORD                  Password for wg-easy web UI (min 8 chars).
+                                             If omitted, you are prompted securely (not echoed).
 
-Optional Options:
     -s, --subscription-id SUBSCRIPTION_ID    Azure subscription ID (default: auto-detect)
     -r, --resource-group NAME                Resource group name (default: ${RESOURCE_GROUP})
     -l, --location LOCATION                  Azure region (default: interactive prompt)
     --ssh-key PATH                           Path to SSH public key (default: ~/.ssh/id_rsa.pub)
+    --web-ui-source CIDR                     Restrict Web UI (TCP ${WG_UI_PORT}) to this address/CIDR
+                                             (default: auto-detect this machine's public IP;
+                                             pass '*' to allow all — not recommended)
     --use-key-vault                          Store password in Azure Key Vault (requires permissions)
     --no-private-dns                         Don't create Private DNS zone
     --teardown                               Delete all resources
@@ -279,6 +287,22 @@ check_prerequisites() {
     fi
     print_success "jq is installed"
 
+    # Check if openssl is installed (used for Key Vault name and password encoding)
+    if ! command -v openssl &> /dev/null; then
+        print_error "openssl is not installed"
+        echo "Please install openssl (usually preinstalled on Linux/macOS)"
+        exit 1
+    fi
+    print_success "openssl is installed"
+
+    # Check if ssh-keygen is installed (used to generate a key pair when none exists)
+    if ! command -v ssh-keygen &> /dev/null; then
+        print_error "ssh-keygen is not installed"
+        echo "Please install OpenSSH client tools"
+        exit 1
+    fi
+    print_success "ssh-keygen is installed"
+
     # Check Azure CLI version
     AZ_VERSION=$(az version --query '"azure-cli"' -o tsv)
     print_info "Azure CLI version: ${AZ_VERSION}"
@@ -295,16 +319,26 @@ check_prerequisites() {
     CURRENT_USER=$(az account show --query 'user.name' -o tsv)
     print_info "Logged in as: ${CURRENT_USER}"
 
-    # Check SSH key
+    # Check SSH key. Only auto-generate when using the default path — if the
+    # user explicitly passed --ssh-key to a missing file, fail loudly rather
+    # than silently generating (and then deploying with) a different key.
+    local ssh_key_is_default=false
     if [ -z "${SSH_KEY_PATH}" ]; then
         SSH_KEY_PATH="${HOME}/.ssh/id_rsa.pub"
+        ssh_key_is_default=true
     fi
 
     if [ ! -f "${SSH_KEY_PATH}" ]; then
-        print_warning "SSH public key not found at ${SSH_KEY_PATH}"
-        print_info "Generating new SSH key pair..."
-        ssh-keygen -t rsa -b 4096 -f "${HOME}/.ssh/id_rsa" -N "" -q
-        print_success "SSH key pair generated"
+        if [ "${ssh_key_is_default}" = true ]; then
+            print_warning "SSH public key not found at ${SSH_KEY_PATH}"
+            print_info "Generating new SSH key pair..."
+            ssh-keygen -t rsa -b 4096 -f "${HOME}/.ssh/id_rsa" -N "" -q
+            print_success "SSH key pair generated"
+        else
+            print_error "SSH public key not found at ${SSH_KEY_PATH}"
+            print_error "Provide a valid --ssh-key path, or omit --ssh-key to use/generate the default key"
+            exit 1
+        fi
     else
         print_success "SSH public key found: ${SSH_KEY_PATH}"
     fi
@@ -439,11 +473,14 @@ create_resource_group() {
 
 create_key_vault() {
     if [ "${USE_KEY_VAULT}" != true ]; then
-        print_info "Skipping Key Vault creation (--no-key-vault specified)"
+        print_info "Skipping Key Vault creation (enable with --use-key-vault)"
         return 0
     fi
 
     print_header "Creating Azure Key Vault"
+
+    # Compute a unique vault name on demand (only when Key Vault is enabled)
+    KEY_VAULT_NAME="wg-vault-$(openssl rand -hex 4)"
 
     # Check if Key Vault exists
     print_info "Creating Key Vault '${KEY_VAULT_NAME}'..."
@@ -709,6 +746,28 @@ create_network_resources() {
     # Small delay between rule creations to avoid Azure eventual consistency issues
     sleep 2
 
+    # Determine the allowed source for the Web UI. The wg-easy admin panel is
+    # served over plain HTTP, so exposing it to the whole internet ('*') means
+    # anyone can reach the login page in cleartext. Default to the deployer's
+    # own public IP; the user can override with --web-ui-source (incl. '*').
+    if [ -z "${WEB_UI_SOURCE}" ]; then
+        print_info "Detecting your public IP to restrict the Web UI..."
+        local detected_ip
+        detected_ip=$(curl -fsS4 https://api.ipify.org 2>/dev/null || true)
+        if [[ "${detected_ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            WEB_UI_SOURCE="${detected_ip}/32"
+            print_success "Web UI will be restricted to ${WEB_UI_SOURCE}"
+        else
+            WEB_UI_SOURCE='*'
+            print_warning "Could not detect your public IP — Web UI will be open to ALL ('*')"
+            print_warning "Re-run with --web-ui-source <your-ip>/32 to restrict it"
+        fi
+    elif [ "${WEB_UI_SOURCE}" = '*' ]; then
+        print_warning "Web UI will be open to ALL ('*') over plain HTTP — not recommended"
+    else
+        print_info "Web UI will be restricted to ${WEB_UI_SOURCE}"
+    fi
+
     # Create NSG rule for Web UI (TCP 51821)
     print_info "Creating NSG rule: Allow Web UI (TCP ${WG_UI_PORT})..."
     set +e
@@ -720,7 +779,7 @@ create_network_resources() {
         --access Allow \
         --protocol Tcp \
         --direction Inbound \
-        --source-address-prefixes '*' \
+        --source-address-prefixes "${WEB_UI_SOURCE}" \
         --source-port-ranges '*' \
         --destination-address-prefixes '*' \
         --destination-port-ranges "${WG_UI_PORT}" \
@@ -830,7 +889,7 @@ deploy_vm() {
             --ssh-key-values "@${SSH_KEY_PATH}" \
             --nics "${NIC_NAME}" \
             --os-disk-size-gb 30 \
-            --storage-sku Standard_LRS \
+            --storage-sku StandardSSD_LRS \
             --output none
 
         print_success "VM '${VM_NAME}' created"
@@ -968,6 +1027,12 @@ echo 'SUCCESS: Docker installation completed'
     print_info "Deploying WireGuard container via Azure CLI..."
     print_info "Generating password hash (wg-easy v14 requirement)..."
 
+    # Encode the password before embedding it in the remote script. base64
+    # output is a safe alphabet, so a password containing quotes, $, backticks,
+    # etc. can neither break the shell quoting nor inject commands on the VM.
+    local WG_PASSWORD_B64
+    WG_PASSWORD_B64=$(printf '%s' "${WG_PASSWORD}" | base64 | tr -d '\n')
+
     # Generate bcrypt hash and deploy container using Azure run-command
     set +e
     local WG_DEPLOY_OUTPUT=$(az vm run-command invoke \
@@ -977,9 +1042,12 @@ echo 'SUCCESS: Docker installation completed'
         --scripts "
 set -e
 
+# Decode the Web UI password (base64 avoids all shell-quoting/injection issues)
+WG_PW=\$(printf '%s' '${WG_PASSWORD_B64}' | base64 -d)
+
 # Generate password hash
 echo 'Generating password hash...'
-HASH_OUTPUT=\$(sudo docker run --rm ghcr.io/wg-easy/wg-easy:latest wgpw '${WG_PASSWORD}' 2>&1)
+HASH_OUTPUT=\$(sudo docker run --rm ${WG_EASY_IMAGE} wgpw \"\$WG_PW\" 2>&1)
 if [ \$? -ne 0 ]; then
     echo 'ERROR: Failed to generate password hash'
     exit 1
@@ -996,6 +1064,8 @@ echo \"Password hash generated successfully\"
 
 # Deploy WireGuard container
 echo 'Deploying WireGuard container...'
+# Remove any existing container so re-runs don't fail on a name collision
+sudo docker rm -f wg-easy 2>/dev/null || true
 sudo docker run -d \
   --name=wg-easy \
   --cap-add=NET_ADMIN \
@@ -1011,7 +1081,7 @@ sudo docker run -d \
   -p ${WG_PORT}:51820/udp \
   -p ${WG_UI_PORT}:51821/tcp \
   --restart unless-stopped \
-  ghcr.io/wg-easy/wg-easy:latest || {
+  ${WG_EASY_IMAGE} || {
     echo 'ERROR: Failed to start WireGuard container'
     sudo docker logs wg-easy 2>/dev/null || echo 'No container logs available'
     exit 1
@@ -1136,8 +1206,9 @@ Admin Username:      ${ADMIN_USERNAME}
 
 WireGuard Endpoint:  ${PUBLIC_IP}:${WG_PORT}
 Web UI:              http://${PUBLIC_IP}:${WG_UI_PORT}
+Web UI Access:       ${WEB_UI_SOURCE}  (source allowed by NSG rule 'AllowWebUI')
 
-Web UI Password:     ${WG_PASSWORD}
+Web UI Password:     (the password you set during deployment)
 EOF
 
     if [ "${USE_KEY_VAULT}" = true ]; then
@@ -1241,24 +1312,28 @@ main() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             -s|--subscription-id)
-                SUBSCRIPTION_ID="$2"
+                SUBSCRIPTION_ID="${2:-}"
                 SUBSCRIPTION_PROVIDED=true
                 shift 2
                 ;;
             -p|--password)
-                WG_PASSWORD="$2"
+                WG_PASSWORD="${2:-}"
                 shift 2
                 ;;
             -r|--resource-group)
-                RESOURCE_GROUP="$2"
+                RESOURCE_GROUP="${2:-}"
                 shift 2
                 ;;
             -l|--location)
-                LOCATION="$2"
+                LOCATION="${2:-}"
                 shift 2
                 ;;
             --ssh-key)
-                SSH_KEY_PATH="$2"
+                SSH_KEY_PATH="${2:-}"
+                shift 2
+                ;;
+            --web-ui-source)
+                WEB_UI_SOURCE="${2:-}"
                 shift 2
                 ;;
             --use-key-vault)
@@ -1297,10 +1372,23 @@ main() {
         exit 0
     fi
 
-    # Validate password for deployment
+    # Prompt for the Web UI password securely if it was not passed on the CLI.
+    # Avoiding -p keeps the secret out of the process list and shell history.
+    if [ -z "${WG_PASSWORD}" ]; then
+        print_info "No password provided via -p; enter one now (input hidden)."
+        read -rs -p "Web UI password (min 8 chars): " WG_PASSWORD; echo
+        read -rs -p "Confirm password: " WG_PASSWORD_CONFIRM; echo
+        if [ "${WG_PASSWORD}" != "${WG_PASSWORD_CONFIRM}" ]; then
+            print_error "Passwords do not match"
+            exit 1
+        fi
+        unset WG_PASSWORD_CONFIRM
+    fi
+
+    # Validate password is present
     if [ -z "${WG_PASSWORD}" ]; then
         print_error "Password is required for deployment"
-        usage
+        exit 1
     fi
 
     # Validate password strength

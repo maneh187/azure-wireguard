@@ -5,7 +5,7 @@
 # Comprehensive teardown of all WireGuard VPN resources
 ################################################################################
 
-set -e
+set -euo pipefail
 
 # Color codes
 RED='\033[0;31m'
@@ -31,8 +31,8 @@ DRY_RUN=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -g|--resource-group)
-            RESOURCE_GROUP="$2"
+        -r|--resource-group|-g)
+            RESOURCE_GROUP="${2:-}"
             shift 2
             ;;
         --dry-run)
@@ -46,7 +46,7 @@ Usage: $0 [OPTIONS]
 Cleanup WireGuard VPN deployment by deleting all resources
 
 Options:
-    -g, --resource-group NAME    Resource group name (default: rg-wireguard-vpn)
+    -r, --resource-group NAME    Resource group name (default: rg-wireguard-vpn)
     --dry-run                    Show what would be deleted without actually deleting
     -h, --help                   Show this help message
 
@@ -58,7 +58,7 @@ Examples:
     $0 --dry-run
 
     # Delete custom resource group
-    $0 -g "my-wireguard-rg"
+    $0 -r "my-wireguard-rg"
 
 EOF
             exit 0
@@ -69,6 +69,12 @@ EOF
             ;;
     esac
 done
+
+# Guard against an empty resource group name — never target ""
+if [ -z "${RESOURCE_GROUP}" ]; then
+    print_error "Resource group name cannot be empty"
+    exit 1
+fi
 
 print_header "WireGuard VPN Cleanup"
 

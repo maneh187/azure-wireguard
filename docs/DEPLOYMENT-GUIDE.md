@@ -107,6 +107,18 @@ That's it! Your VPN is ready to use.
    - Included in Windows 10/11 by default
    - Verify: `curl --version` in PowerShell or Command Prompt
 
+4. **openssl** - Used by the deployment script on every run
+
+   **macOS/Linux:**
+   - Standard on Linux/macOS
+   - Verify: `openssl version`
+
+5. **ssh-keygen** - Used to generate an SSH key locally if one isn't supplied
+
+   **macOS/Linux:**
+   - Standard on Linux/macOS
+   - Verify: `ssh-keygen -V`
+
 ### Azure Requirements
 
 - **Active Azure subscription** with sufficient permissions
@@ -156,15 +168,16 @@ az account list --output table
 
 ### Shell Requirements
 
+Prerequisites can be installed on Windows, macOS, and Linux. The deployment script itself requires a Bash environment — on Windows use WSL2 or Git Bash (native PowerShell/CMD are not supported).
+
 **macOS/Linux:**
 - Use Terminal or your preferred shell (bash/zsh)
 
 **Windows:**
-- **Option 1 (Recommended):** Use WSL (Windows Subsystem for Linux)
+- **Option 1 (Recommended):** Use WSL2 (Windows Subsystem for Linux)
   - Install: `wsl --install` in PowerShell as Administrator
   - Provides full Linux compatibility
 - **Option 2:** Use Git Bash (included with Git for Windows)
-- **Option 3:** Use PowerShell with bash compatibility (may require script adaptations)
 
 ### Basic Deployment
 
@@ -217,20 +230,20 @@ This will:
 - **Windows:** Keys in `%USERPROFILE%\.ssh\id_rsa.pub` or `C:\Users\YourName\.ssh\id_rsa.pub`
 - Generate if needed:
   - All platforms: `ssh-keygen -t rsa -b 4096`
-  - Or use Azure's generated key by omitting the `--ssh-key` parameter
+  - Or omit the `--ssh-key` parameter: the script uses `~/.ssh/id_rsa.pub` and generates a new key locally with `ssh-keygen` if one doesn't already exist
 
 ### Command-Line Options
 
 ```
-Required:
-  -p, --password PASSWORD          Web UI password (min 8 chars)
-
-Optional:
+  -p, --password PASSWORD          Web UI password (min 8 chars).
+                                   If omitted, you are prompted securely (not echoed).
   -s, --subscription-id ID         Azure subscription (default: auto-detect)
   -r, --resource-group NAME        Resource group (default: rg-wireguard-vpn)
   -l, --location REGION            Azure region (default: interactive prompt)
   --ssh-key PATH                   SSH public key path
-  --no-key-vault                   Skip Key Vault creation
+  --web-ui-source CIDR             Restrict Web UI (TCP 51821) to this address/CIDR
+                                   (default: auto-detect your public IP; '*' = allow all)
+  --use-key-vault                  Store password in Azure Key Vault (requires permissions)
   --no-private-dns                 Skip Private DNS creation
   --teardown                       Delete all resources
   -h, --help                       Show help
@@ -402,7 +415,7 @@ Access the web interface at `http://<YOUR_IP>:51821`
 5. Download config or scan QR code
 
 **Via Script:**
-Use the `regenerate-configs-v2.sh` script to download all existing configs.
+Use the `tools/regenerate-configs.sh` script to download all existing configs.
 
 ### Retrieve Password from Key Vault
 
@@ -497,7 +510,7 @@ az vm run-command invoke \
   -n wireguard-vm \
   --command-id RunShellScript \
   --scripts "
-sudo docker pull ghcr.io/wg-easy/wg-easy:latest
+sudo docker pull ghcr.io/wg-easy/wg-easy:14
 sudo docker stop wg-easy
 sudo docker rm wg-easy
 sudo docker run -d \
@@ -508,11 +521,14 @@ sudo docker run -d \
   --sysctl='net.ipv4.ip_forward=1' \
   -e WG_HOST='${PUBLIC_IP}' \
   -e PASSWORD_HASH='<YOUR_HASH>' \
+  -e WG_DEFAULT_DNS=168.63.129.16 \
+  -e WG_DEFAULT_ADDRESS=10.8.0.x \
+  -e WG_ALLOWED_IPS=0.0.0.0/0,::/0 \
   -v \$HOME/.wg-easy:/etc/wireguard \
   -p 51820:51820/udp \
   -p 51821:51821/tcp \
   --restart unless-stopped \
-  ghcr.io/wg-easy/wg-easy:latest
+  ghcr.io/wg-easy/wg-easy:14
 echo 'Container updated successfully'
 " \
   --query "value[0].message" -o tsv
@@ -522,7 +538,7 @@ echo 'Container updated successfully'
 
 ```bash
 ssh azureuser@<PUBLIC_IP>
-sudo docker pull ghcr.io/wg-easy/wg-easy:latest
+sudo docker pull ghcr.io/wg-easy/wg-easy:14
 sudo docker stop wg-easy
 sudo docker rm wg-easy
 # Run new container (use the docker run command from deployment)
@@ -541,7 +557,7 @@ sudo docker rm wg-easy
 
 **Using cleanup script (recommended):**
 ```bash
-./cleanup-wireguard.sh
+./tools/cleanup-wireguard.sh
 ```
 
 **Features:**
@@ -553,12 +569,12 @@ sudo docker rm wg-easy
 
 **Dry run (preview only):**
 ```bash
-./cleanup-wireguard.sh --dry-run
+./tools/cleanup-wireguard.sh --dry-run
 ```
 
 **Custom resource group:**
 ```bash
-./cleanup-wireguard.sh -g "my-vpn-rg"
+./tools/cleanup-wireguard.sh -r "my-vpn-rg"
 ```
 
 ### Manual Cleanup
@@ -775,8 +791,8 @@ az deployment group show -g rg-wireguard-vpn -n <DEPLOYMENT_NAME>
 ```bash
 # View current month costs
 az consumption usage list \
-  --start-date "2025-11-01" \
-  --end-date "2025-11-30" \
+  --start-date "2026-07-01" \
+  --end-date "2026-07-31" \
   -o table
 
 # Set up cost alert (in Azure Portal)
@@ -883,12 +899,12 @@ For issues:
 ---
 
 **Document Version:** 2.0
-**Last Updated:** January 13, 2025
+**Last Updated:** 2026-07-15
 **Script Version:** Azure CLI-based deployment (no SSH required)
 
 **Major Updates:**
-- v2.0 (Jan 13, 2025): Azure CLI management approach, Key Vault now optional, universal network compatibility, SSH-free deployment and management
-- v1.0 (Nov 13, 2025): Initial deployment guide with Key Vault + Private DNS
+- v2.0 (2026-07-15): Azure CLI management approach, Key Vault now optional, universal network compatibility, SSH-free deployment and management
+- v1.0 (2025-11-13): Initial deployment guide with Key Vault + Private DNS
 
 
-[def]: #cost-breakdown
+[def]: #estimated-cost-breakdown

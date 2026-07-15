@@ -37,7 +37,7 @@ az login
 - ✅ **Easy peer creation** - Create unlimited peers via Web UI
 - ✅ **Azure CLI management** - All operations via Azure CLI (no SSH port required)
 - ✅ **Private DNS support** - Internal name resolution
-- ✅ **Interactive region selection** - Choose from 30+ Azure regions
+- ✅ **Interactive region selection** - Choose from 30 Azure regions
 - ✅ **Auto-subscription detection** - No hardcoded credentials
 - ✅ **QR code generation** - Built into Web UI for easy mobile setup
 - ✅ **Comprehensive cleanup** - One-command teardown
@@ -49,7 +49,7 @@ az login
 
 ### Infrastructure
 - Ubuntu 22.04 VM (B1s: 1 vCPU, 1 GB RAM)
-- Docker 29.0+ with WireGuard + wg-easy container
+- Docker CE (latest, installed automatically) with WireGuard + wg-easy container
 - Public IP with static allocation
 - Network Security Group (SSH, WireGuard UDP/51820, Web UI TCP/51821)
 - Private DNS zone for internal resolution (optional)
@@ -76,10 +76,10 @@ az login
 .
 ├── deploy-wireguard-azure-vm.sh     # Main deployment script (no SSH required)
 ├── README.md                        # This file
-├── scripts/                         # Supporting scripts
+├── tools/                            # Supporting scripts
 │   ├── cleanup-wireguard.sh        # Complete teardown with dry-run support
 │   ├── cleanup-partial-deployment.sh # Clean up failed deployments
-│   └── regenerate-configs-v2.sh    # Download configs for existing peers
+│   └── regenerate-configs.sh       # Download configs for existing peers
 └── docs/                           # Documentation
     └── DEPLOYMENT-GUIDE.md         # 📖 Complete usage guide
 ```
@@ -108,9 +108,15 @@ az login
    - **Windows:** Included in Windows 10/11 by default
    - **Verify:** `curl --version`
 
+4. **openssl** - Used by the deployment script on every run; standard on Linux/macOS
+   - **Verify:** `openssl version`
+
+5. **ssh-keygen** - Used to generate an SSH key locally if one isn't supplied; standard on Linux/macOS
+   - **Verify:** `ssh-keygen -V` (or check `man ssh-keygen`)
+
 **Additional Requirements:**
 - Active Azure subscription with appropriate permissions
-- Bash shell (Linux/macOS native, Windows: WSL, Git Bash, or PowerShell alternative)
+- Prerequisites can be installed on Windows, macOS, and Linux. The deployment script itself requires a Bash environment — on Windows use WSL2 or Git Bash (native PowerShell/CMD are not supported).
 
 **Network Requirements:**
 - HTTPS (port 443) access for Azure CLI
@@ -190,10 +196,10 @@ Topics covered:
 
 ```bash
 # Preview what will be deleted
-./scripts/cleanup-wireguard.sh --dry-run
+./tools/cleanup-wireguard.sh --dry-run
 
 # Delete everything
-./scripts/cleanup-wireguard.sh
+./tools/cleanup-wireguard.sh
 
 # Or use deployment script
 ./deploy-wireguard-azure-vm.sh --teardown
@@ -283,13 +289,13 @@ az vm run-command invoke -g rg-wireguard-vpn -n wireguard-vm \
    - All created via Azure CLI in parallel where possible
 
 2. **Install Docker on VM:**
-   - Ubuntu 22.04 with Docker CE 29.0+
+   - Ubuntu 22.04 with Docker CE (latest, installed automatically)
    - Installed via `az vm run-command` (no SSH required)
    - Uses Azure's internal infrastructure (HTTPS/443 only)
 
 3. **Deploy wg-easy Container:**
    - Privileged container with NET_ADMIN capability
-   - Bcrypt password hashing (wg-easy v14+ requirement)
+   - Bcrypt password hashing (requires wg-easy v14 (pinned))
    - Persistent storage at `$HOME/.wg-easy:/etc/wireguard`
    - Deployed via `az vm run-command`
 
@@ -347,7 +353,7 @@ az vm run-command invoke -g rg-wireguard-vpn -n wireguard-vm \
 
 4. **When finished:**
    ```bash
-   ./scripts/cleanup-wireguard.sh
+   ./tools/cleanup-wireguard.sh
    ```
 
 ---

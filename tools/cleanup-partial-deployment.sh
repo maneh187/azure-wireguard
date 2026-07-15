@@ -5,7 +5,7 @@
 # Removes all resources in the resource group
 ################################################################################
 
-set -e
+set -euo pipefail
 
 # Color codes
 RED='\033[0;31m'
@@ -20,6 +20,30 @@ print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 
 RESOURCE_GROUP="rg-wireguard-vpn"
+
+# Parse arguments (-r/--resource-group matches the deploy script's flag)
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -r|--resource-group)
+            RESOURCE_GROUP="${2:-}"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [-r|--resource-group NAME]   (default: rg-wireguard-vpn)"
+            exit 0
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Guard against an empty resource group name — never target ""
+if [ -z "${RESOURCE_GROUP}" ]; then
+    print_error "Resource group name cannot be empty"
+    exit 1
+fi
 
 print_info "Checking resource group: ${RESOURCE_GROUP}"
 

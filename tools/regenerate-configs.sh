@@ -1,11 +1,13 @@
 #!/bin/bash
 
 ################################################################################
-# WireGuard Config Regeneration Script v2
-# Uses session-based authentication for wg-easy API
+# WireGuard Config Regeneration Script
+# Uses session-based authentication for the wg-easy API to download client
+# configs. Run from the repo root so generated configs land where the
+# cleanup script looks for them (./wireguard-configs-*).
 ################################################################################
 
-set -e
+set -euo pipefail
 
 # Color codes
 RED='\033[0;31m'
@@ -19,11 +21,45 @@ print_error() { echo -e "${RED}✗${NC} $1"; }
 print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 
-# Get VM IP
+# Defaults mirror the deploy script; override the RG with -r/--resource-group
+RESOURCE_GROUP="rg-wireguard-vpn"
+VM_NAME="wireguard-vm"
+WG_PORT=51820
+WG_UI_PORT=51821
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -r|--resource-group)
+            RESOURCE_GROUP="${2:-}"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [-r|--resource-group NAME]   (default: rg-wireguard-vpn)"
+            exit 0
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z "${RESOURCE_GROUP}" ]; then
+    print_error "Resource group name cannot be empty"
+    exit 1
+fi
+
+# Get VM IP (public IP name is derived the same way the deploy script names it)
 PUBLIC_IP=$(az network public-ip show \
-    --resource-group rg-wireguard-vpn \
-    --name wireguard-vm-ip \
-    --query 'ipAddress' -o tsv)
+    --resource-group "${RESOURCE_GROUP}" \
+    --name "${VM_NAME}-ip" \
+    --query 'ipAddress' -o tsv 2>/dev/null || true)
+
+if [ -z "${PUBLIC_IP}" ] || [ "${PUBLIC_IP}" = "null" ]; then
+    print_error "Could not resolve the VM public IP (${VM_NAME}-ip in ${RESOURCE_GROUP})"
+    print_error "Is the deployment up? Check with: az network public-ip list -g ${RESOURCE_GROUP} -o table"
+    exit 1
+fi
 
 print_info "VM Public IP: ${PUBLIC_IP}"
 
@@ -37,7 +73,7 @@ if [ -z "${WG_PASSWORD}" ]; then
     exit 1
 fi
 
-API_URL="http://${PUBLIC_IP}:51821/api"
+API_URL="http://${PUBLIC_IP}:${WG_UI_PORT}/api"
 COOKIE_FILE="/tmp/wg-cookies.txt"
 
 print_info "Authenticating..."
@@ -66,12 +102,6 @@ if [ "$CLIENT_COUNT" -eq 0 ]; then
     print_warning "No clients found."
     print_info "Please create clients manually in the Web UI: ${API_URL%%/api}"
     print_info "Then run this script again to download their configurations."
-    rm -f "${COOKIE_FILE}"
-    exit 0
-fi
-
-if [ "$CLIENT_COUNT" -eq 0 ]; then
-    print_info "No clients available. Exiting."
     rm -f "${COOKIE_FILE}"
     exit 0
 fi
@@ -137,8 +167,8 @@ Mobile (iOS/Android):
   3. Select "Create from QR code"
   4. Scan the QR code from the -qr.svg file
 
-WireGuard Server: ${PUBLIC_IP}:51820
-Web UI: http://${PUBLIC_IP}:51821
+WireGuard Server: ${PUBLIC_IP}:${WG_PORT}
+Web UI: http://${PUBLIC_IP}:${WG_UI_PORT}
 Password: <YOUR_WEB_UI_PASSWORD>
 
 =================================
