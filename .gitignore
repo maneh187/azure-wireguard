@@ -16,6 +16,11 @@
 *.ovpn
 id_rsa
 id_rsa.pub
+.env
+.env.*
+
+# Machine-local Claude Code settings (portable safety net; also in ~/.config/git/ignore)
+**/.claude/settings.local.json
 
 # Project Specific
 wireguard-configs-*/
